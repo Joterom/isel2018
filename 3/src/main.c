@@ -1,7 +1,7 @@
 #include "esp_common.h"
 #include "freertos/task.h"
 #include "gpio.h"
-
+#include "string.h"
 /******************************************************************************
  * FunctionName : user_rf_cal_sector_set
  * Description  : SDK just reversed 4 sectors, used for rf init data and paramters.
@@ -54,12 +54,8 @@ char* morse(char c){
 }
 
 int str2morse(char *buff, int n,const char* str){
-  while(*str && n!=0){
-    buff = morse(*str);
-    //char *strcpy(*buff, morse(str));
-    buff++;
-    str++;
-  }
+  strncpy(buff, morse(*str), n);
+  //str2morse(buff++,n,str++);
   return 1;
 }
 
@@ -88,16 +84,26 @@ void morse_send(const char* msg){
       GPIO_OUTPUT_SET(2, 1);
       vTaskDelay(1000/portTICK_RATE_MS);
     break;
+
+    case'\0':
+      return;
   }
+  morse_send (++msg) ;
 }
 void task_blink(void* ignore)
 {
     GPIO_AS_OUTPUT(2);
     //gpio2_output_conf();
-    while(true) {
-      char* cadena = (char*)malloc(256);
-      str2morse(cadena,256,"hola mundo");
+    char hola[]="hola every mundo";
+    char *puntero=&hola[0];
+    while(*puntero!='\0') {
+      char* cadena = (char*)malloc(10000);
+      str2morse(cadena,10000,puntero);
       morse_send(cadena);
+      printf("%s", cadena);
+      // ++cadena;
+      ++puntero;
+      free(cadena);
     }
     vTaskDelete(NULL);
 }
