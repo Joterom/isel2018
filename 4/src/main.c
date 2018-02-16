@@ -53,24 +53,32 @@ uint32 user_rf_cal_sector_set(void)
     return rf_cal_sec;
 }
 
-int button_pressed (fsm_t* this){
-  return (!GPIO_INPUT_GET(0));
+int button_pressed (fsm_t* self){
+  if (!GPIO_INPUT_GET(0)){
+    printf("GPIO 0 pulsado -->");
+  }
+  if (GPIO_INPUT_GET(15)){
+    printf("GPIO 15 pulsado -->");
+  }
+  return (GPIO_INPUT_GET(15) || !GPIO_INPUT_GET(0));
 }
-void led_on (fsm_t* this) {
+void led_on (fsm_t* self) {
+  printf("Estoy encendido\n");
   GPIO_OUTPUT_SET(2, 0);
 }
-void led_off (fsm_t* this) {
+void led_off (fsm_t* self) {
+  printf("Estoy apagado\n");
   GPIO_OUTPUT_SET(2, 1);
 }
 
 void inter(void* ignore){
 
   PIN_FUNC_SELECT(GPIO_PIN_REG_15, FUNC_GPIO15);
+  PIN_FUNC_SELECT(GPIO_PIN_REG_0, FUNC_GPIO0);
   GPIO_AS_OUTPUT(2);
-
   static fsm_trans_t interruptor[]={
     {LED_ON, button_pressed, LED_OFF, led_off },
-    {LED_OFF, button_pressed, LED_ON, led_on },
+    {LED_OFF, button_pressed, LED_ON, led_on},
     {-1, NULL, -1, NULL },
   };
 

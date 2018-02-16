@@ -38,7 +38,7 @@ struct fsm_t {
 };
 
 fsm_t* fsm_new (fsm_trans_t* tt);
-void fsm_init (fsm_t* this, fsm_trans_t* tt);
-void fsm_fire (fsm_t* this);
+void fsm_init (fsm_t* self, fsm_trans_t* tt);
+void fsm_fire (fsm_t* self);
 
 #endif
