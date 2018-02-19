@@ -4,10 +4,12 @@
 #include "gpio.h"
 #include "fsm.h"
 #define PERIOD_TICK 100/portTICK_RATE_MS
-
+#define TIEMPO_ON 6000
+volatile portTickType tiempo_de_apagado;
 enum fsm_state {
-  LED_ON,
-  LED_OFF,
+  ALARM_ON,
+  ALARM_OFF,
+  ALARM_RDY,
 };
 
 /******************************************************************************
@@ -53,22 +55,40 @@ uint32 user_rf_cal_sector_set(void)
     return rf_cal_sec;
 }
 
-int button_pressed (fsm_t* self){
-  if (!GPIO_INPUT_GET(0)){
-    printf("GPIO 0 pulsado -->");
-  }
-  if (GPIO_INPUT_GET(15)){
-    printf("GPIO 15 pulsado -->");
-  }
-  return (GPIO_INPUT_GET(15) || !GPIO_INPUT_GET(0));
+int led_timeout (fsm_t* self) {
+   portTickType now = xTaskGetTickCount();
+   if (now >= tiempo_de_apagado){
+     return(1);
+   } else {
+     return(0);
+   }
 }
-void led_on (fsm_t* self) {
-  printf("Estoy encendido\n");
+
+int button0_pressed (fsm_t* self){
+    if (!GPIO_INPUT_GET(0)){
+      printf("GPIO 0 pulsado --> ");
+    }
+    return (!GPIO_INPUT_GET(0));
+}
+
+void turn_on (fsm_t* self) {
+  printf("\n++++++++++\nALARMA SONANDO\n++++++++++\n");
   GPIO_OUTPUT_SET(2, 0);
 }
-void led_off (fsm_t* self) {
-  printf("Estoy apagado\n");
+void dismount (fsm_t* self) {
+  printf("\nSistema desconectado\n");
   GPIO_OUTPUT_SET(2, 1);
+}
+
+void mount (fsm_t* self){
+  printf("\nSistema operativo\n");
+}
+
+int alert (fsm_t* self){
+    if (GPIO_INPUT_GET(15)){
+      printf("GPIO 15 activo --> Presencia detectada");
+    }
+    return (GPIO_INPUT_GET(15));
 }
 
 void inter(void* ignore){
@@ -77,15 +97,16 @@ void inter(void* ignore){
   PIN_FUNC_SELECT(GPIO_PIN_REG_0, FUNC_GPIO0);
   GPIO_AS_OUTPUT(2);
   static fsm_trans_t interruptor[]={
-    {LED_ON, button_pressed, LED_OFF, led_off },
-    {LED_OFF, button_pressed, LED_ON, led_on},
+    {ALARM_ON, button0_pressed, ALARM_OFF, dismount },
+    {ALARM_RDY, button0_pressed, ALARM_OFF, dismount},
+    {ALARM_OFF, button0_pressed, ALARM_RDY, mount},
+    {ALARM_RDY, alert, ALARM_ON, turn_on},
     {-1, NULL, -1, NULL },
   };
 
   fsm_t* fsm = fsm_new(interruptor);
-  led_off(fsm);
+  dismount(fsm);
   portTickType xLastWakeTime;
-
   while(true) {
     xLastWakeTime = xTaskGetTickCount();
     fsm_fire(fsm);
