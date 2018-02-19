@@ -5,7 +5,7 @@
 #include "fsm.h"
 #define PERIOD_TICK 100/portTICK_RATE_MS
 #define ETS_GPIO_INTR_ENABLE() _xt_isr_unmask(1 << ETS_GPIO_INUM);
-#define REBOUND_TICK 1500
+#define REBOUND_TICK 150
 volatile int rebote;
 enum fsm_state {
   LED_ON,
