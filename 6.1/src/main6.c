@@ -4,12 +4,15 @@
 #include "gpio.h"
 #include "fsm.h"
 #define PERIOD_TICK 100/portTICK_RATE_MS
-#define TIEMPO_ON 6000
+#define REBOUND_TICK 50
+#define ETS_GPIO_INTR_ENABLE() _xt_isr_unmask(1 << ETS_GPIO_INUM);
 volatile portTickType tiempo_de_apagado;
+volatile int boton15;
+volatile int boton0;
+
 enum fsm_state {
   ALARM_ON,
   ALARM_OFF,
-  ALARM_RDY,
 };
 
 /******************************************************************************
@@ -64,11 +67,12 @@ int led_timeout (fsm_t* self) {
    }
 }
 
-int button0_pressed (fsm_t* self){
-    if (!GPIO_INPUT_GET(0)){
-      printf("GPIO 0 pulsado --> ");
-    }
+int button_pressed (fsm_t* self){
     return (!GPIO_INPUT_GET(0));
+}
+
+int button_not_pressed (fsm_t* self){
+    return (GPIO_INPUT_GET(0));
 }
 
 void turn_on (fsm_t* self) {
@@ -82,13 +86,30 @@ void dismount (fsm_t* self) {
 
 void mount (fsm_t* self){
   printf("\nSistema operativo\n");
+  boton15 = 0;
 }
 
 int alert (fsm_t* self){
-    if (GPIO_INPUT_GET(15)){
+    if (boton15){
       printf("GPIO 15 activo --> Presencia detectada");
     }
-    return (GPIO_INPUT_GET(15));
+    return (boton15);
+}
+
+void isr_gpio(void* arg){
+  uint32 status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+  static portTickType ultimotick15 = 0;
+  //static portTickType ultimotick0 = 0;
+  portTickType ahora = xTaskGetTickCount();
+
+  if (status & BIT(15)){
+    if (ahora > ultimotick15){
+      ultimotick15 = ahora + REBOUND_TICK;
+      boton15 = 1;
+      //printf("\nPulsacion detectada, GPIO15\nTiempo actual : %i\nTiempo de rebote: %i\n",ahora,ultimotick15);
+    }
+  }
+  GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
 }
 
 void inter(void* ignore){
@@ -97,12 +118,16 @@ void inter(void* ignore){
   PIN_FUNC_SELECT(GPIO_PIN_REG_0, FUNC_GPIO0);
   GPIO_AS_OUTPUT(2);
   static fsm_trans_t interruptor[]={
-    {ALARM_ON, button0_pressed, ALARM_OFF, dismount },
-    {ALARM_RDY, button0_pressed, ALARM_OFF, dismount},
-    {ALARM_OFF, button0_pressed, ALARM_RDY, mount},
-    {ALARM_RDY, alert, ALARM_ON, turn_on},
+    {ALARM_OFF, button_pressed, ALARM_ON, mount},
+    {ALARM_ON, button_not_pressed, ALARM_OFF, dismount },
+    {ALARM_ON, alert, ALARM_OFF, turn_on},
     {-1, NULL, -1, NULL },
   };
+
+  gpio_intr_handler_register((void*) isr_gpio, NULL);
+  gpio_pin_intr_state_set(0, GPIO_PIN_INTR_NEGEDGE);
+  gpio_pin_intr_state_set(15, GPIO_PIN_INTR_POSEDGE);
+  ETS_GPIO_INTR_ENABLE();
 
   fsm_t* fsm = fsm_new(interruptor);
   dismount(fsm);
