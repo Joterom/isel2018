@@ -4,16 +4,18 @@
 #include "gpio.h"
 #include "fsm.h"
 #define PERIOD_TICK 100/portTICK_RATE_MS
-#define NUM_TICKS_2S 200
+#define NUM_TICKS_5s 500
 #define NUM_TICKS_10S 1000
 #define ETS_GPIO_INTR_ENABLE() _xt_isr_unmask(1 << ETS_GPIO_INUM);
-#define PASSWORD 666
 #define REBOUND_TICK 20
 
-volatile portTickType timer_2s;
-volatile portTickType timer_10s;
-int code_in[3];
-int *code;
+static int secret[] = { 1, 1, 1 };
+static portTickType timer_5s=0;
+static int current = 0;
+
+//volatile portTickType timer_10s;
+static int code_in[3];
+static int *code;
 volatile int boton15;
 volatile int boton0;
 
@@ -21,15 +23,8 @@ volatile int boton0;
 enum fsm_state {
   ALARM_ON,
   ALARM_OFF,
-  EN_FIGURE_1,
-  EN_FIGURE_2,
-  EN_FIGURE_3,
-  DIS_FIGURE_1,
-  DIS_FIGURE_2,
-  DIS_FIGURE_3,
 };
 
-int check_password(int *pass);
 
 /******************************************************************************
  * FunctionName : user_rf_cal_sector_set
@@ -74,103 +69,73 @@ uint32 user_rf_cal_sector_set(void)
     return rf_cal_sec;
 }
 
-int timeout2s (fsm_t* self) {
-   portTickType now = xTaskGetTickCount();
-   if (now > timer_2s){
-     printf("\nTimeout de 2s disparado\n");
-     return(1);
-   }
-   return(0);
+static int timeout5s (fsm_t* self) {
+   return (xTaskGetTickCount() > timer_5s);
 }
 
-int timeout2sTurn (fsm_t* self) {
-   portTickType now = xTaskGetTickCount();
-   if (now > timer_2s){
-     return(check_password(code));
-   }
-   return(0);
-}
 
-int timeout10s (fsm_t* self) {
-   portTickType now = xTaskGetTickCount();
-   if (now > timer_10s){
-     printf("\nTimeout de 10s disparado\n");
-     return(1);
-   }
-   return(0);
-}
-
-int button_pressed (fsm_t* self){
-  portTickType now = xTaskGetTickCount();
+static int button_pressed (fsm_t* self){
   if (boton0) {
     return (1);
   }
   return 0;
 }
 
-int check_password (int* pass){
-  int pass_num = ((*(pass) * 100) + (*(pass-1) * 10) + *(pass-2));
-  if ( pass_num == PASSWORD) {
-    printf("Contraseña correcta");
-    return 1;
-  }
-  return 0;
+static int pass_OK (fsm_t* self){
+
+  return current == (sizeof(secret) / sizeof(secret[0])) && current == 3;
 }
 
-void setTimers (fsm_t* self){
-  portTickType now = xTaskGetTickCount();
-  timer_2s = now + NUM_TICKS_2S; //momento en el que pasarán 2 segundos
-  timer_10s = now + NUM_TICKS_10S; //momento en el que pasarán 10 segundos
-  boton0 = 0;
-  printf("\nComienza la introduccion del codigo\nCodigo introducido hasta el momento: %i%i%i\n",(code_in[2]),(code_in[1]),(code_in[0]));
+static int pass_FAIL (fsm_t* self){
+  return current != (sizeof(secret) / sizeof(secret[0])) && current == 3;
 }
 
-void turn_on (fsm_t* self) {
+
+static void turn_on (fsm_t* self) {
   printf("\n++++++++++\nALARMA SONANDO\n++++++++++\n");
   GPIO_OUTPUT_SET(2, 0);
   boton15 = 0;
 }
-void dismount (fsm_t* self) {
-  timer_2s = 0;
-  timer_10s = 0;
+
+static void dismount (fsm_t* self) {
+  timer_5s = 0;
   code = &code_in[0];
   *code = 0;
   *(code + 1) = 0;
   *(code + 2) = 0;
+  current=0;
   printf("\nSistema desconectado\nCodigo reseteado a %i%i%i\n",(code_in[2]),(code_in[1]),(code_in[0]));
   GPIO_OUTPUT_SET(2, 1);
 }
 
-void mount (fsm_t* self){
-  timer_2s = 0;
-  timer_10s = 0;
+static void mount (fsm_t* self){
+  timer_5s = 0;
   code = &code_in[0];
   *code = 0;
   *(code + 1) = 0;
   *(code + 2) = 0;
+  current=0;
   printf("\nSistema OPERATIVO\nCodigo reseteado a %i%i%i\n",(code_in[2]),(code_in[1]),(code_in[0]));
 }
 
-void anadeCifra (fsm_t* self){
-  code = code + 1;
-  portTickType now = xTaskGetTickCount();
-  timer_2s = now + NUM_TICKS_2S;
+static void anadeCifra (fsm_t* self){
+  code_in[++current];
+  timer_5s = xTaskGetTickCount() + NUM_TICKS_5s;
   printf("\nCodigo introducido hasta el momento: %i%i%i\n",(code_in[2]),(code_in[1]),(code_in[0]));
 }
 
-void sumaCifra (fsm_t* self){
-  *code = *code + 1;
-  if (*code == 10){
-    *code = 0;
+static void sumaCifra (fsm_t* self){
+  code_in[current] ++;
+
+  if (code_in[current] == 10){
+    code_in[current] = 0;
   }
-  portTickType now = xTaskGetTickCount();
-  timer_2s = now + NUM_TICKS_2S;
-  timer_10s = now + NUM_TICKS_10S;
+
   boton0 = 0;
   printf("\nCodigo introducido hasta el momento: %i%i%i\n",(code_in[2]),(code_in[1]),(code_in[0]));
 }
 
-int alert (fsm_t* self){
+static int alert (fsm_t* self){
     if (boton15){
       printf("GPIO 15 activo --> Presencia detectada");
     }
@@ -189,7 +154,7 @@ void isr_gpio(void* arg){
       boton0 = 1;
       //printf("\nPulsacion detectada, GPIO0\nTiempo actual : %i\nTiempo de rebote: %i\n",ahora,ultimotick0);
     } else {
-      printf("\nAntirrebotes lanzado, GPIO0 --> Tiempo actual: %i\n",ahora);
+      //printf("\nAntirrebotes lanzado, GPIO0 --> Tiempo actual: %i\n",ahora);
     }
   }
 
@@ -211,34 +176,15 @@ void inter(void* ignore){
   PIN_FUNC_SELECT(GPIO_PIN_REG_0, FUNC_GPIO0);
   GPIO_AS_OUTPUT(2);
   static fsm_trans_t interruptor[]={
-    {ALARM_OFF, button_pressed, EN_FIGURE_1, setTimers },
+    {ALARM_OFF, button_pressed, ALARM_OFF, sumaCifra},
+    {ALARM_OFF, timeout5s, ALARM_OFF, anadeCifra},
+    {ALARM_OFF, pass_OK, ALARM_ON, mount},
+    {ALARM_OFF, pass_FAIL, ALARM_OFF, dismount},
 
-    {EN_FIGURE_1, timeout2s, EN_FIGURE_2, anadeCifra},
-    {EN_FIGURE_1, button_pressed, EN_FIGURE_1, sumaCifra},
-    {EN_FIGURE_1, timeout10s, ALARM_OFF, dismount},
-
-    {EN_FIGURE_2, timeout2s, EN_FIGURE_3, anadeCifra},
-    {EN_FIGURE_2, button_pressed, EN_FIGURE_2, sumaCifra},
-    {EN_FIGURE_2, timeout10s, ALARM_OFF, dismount},
-
-    {EN_FIGURE_3, button_pressed, EN_FIGURE_3, sumaCifra},
-    {EN_FIGURE_3, timeout2sTurn, ALARM_ON, mount},
-    {EN_FIGURE_3, timeout10s, ALARM_OFF, dismount},
-
-    {ALARM_ON, button_pressed, DIS_FIGURE_1, setTimers},
-    {ALARM_ON, alert, ALARM_ON, turn_on},
-
-    {DIS_FIGURE_1, timeout2s, DIS_FIGURE_2, anadeCifra},
-    {DIS_FIGURE_1, button_pressed, DIS_FIGURE_1, sumaCifra},
-    {DIS_FIGURE_1, timeout10s, ALARM_ON, turn_on},
-
-    {DIS_FIGURE_2, timeout2s, DIS_FIGURE_3, anadeCifra},
-    {DIS_FIGURE_2, button_pressed, DIS_FIGURE_2, sumaCifra},
-    {DIS_FIGURE_2, timeout10s, ALARM_ON, turn_on},
-
-    {DIS_FIGURE_3, button_pressed, DIS_FIGURE_3, sumaCifra},
-    {DIS_FIGURE_3, timeout2sTurn, ALARM_OFF, dismount},
-    {DIS_FIGURE_3, timeout10s, ALARM_ON, turn_on},
+    {ALARM_ON, timeout5s, ALARM_ON , anadeCifra},
+    {ALARM_ON, alert, ALARM_ON , turn_on},
+    {ALARM_ON,pass_FAIL, ALARM_ON, mount},
+    {ALARM_ON, pass_OK, ALARM_OFF , dismount},
     {-1, NULL, -1, NULL },
   };
 
