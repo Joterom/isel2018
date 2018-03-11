@@ -120,7 +120,7 @@ void inter(void* ignore){
   static fsm_trans_t interruptor[]={
     {ALARM_OFF, button_pressed, ALARM_ON, mount},
     {ALARM_ON, button_not_pressed, ALARM_OFF, dismount },
-    {ALARM_ON, alert, ALARM_OFF, turn_on},
+    {ALARM_ON, alert, ALARM_ON, turn_on},
     {-1, NULL, -1, NULL },
   };
 

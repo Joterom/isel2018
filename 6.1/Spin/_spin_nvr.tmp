@@ -1,0 +1,16 @@
+never spec {    /* !((([] ((! (((state==OFF)) && (p))) || (<> ((state==ON))))) && ([] ((! (((state==ON)) && (! (p)))) || (<> ((state==OFF)))))) && ([] ((! (((state==ON)) && (alarm))) || (<> ((state==ON)))))) */
+T0_init:
+	do
+	:: (((! ((! (((state==OFF)) && (p)))) && ! (((state==ON)))) || (! ((! (((state==ON)) && (alarm)))) && ! (((state==ON)))))) -> goto accept_S9
+	:: (! ((! (((state==ON)) && (! (p))))) && ! (((state==OFF)))) -> goto accept_S14
+	:: (1) -> goto T0_init
+	od;
+accept_S9:
+	do
+	:: (! (((state==ON)))) -> goto accept_S9
+	od;
+accept_S14:
+	do
+	:: (! (((state==OFF)))) -> goto accept_S14
+	od;
+}
