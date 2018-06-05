@@ -1,0 +1,11 @@
+never spec {    /* !([] ((! (((r_state==RAQUETA)) && ((btn_der==btn_izq)))) || (<> ((mov==0))))) */
+T0_init:
+	do
+	:: (! ((! (((r_state==RAQUETA)) && ((btn_der==btn_izq))))) && ! (((mov==0)))) -> goto accept_S4
+	:: (1) -> goto T0_init
+	od;
+accept_S4:
+	do
+	:: (! (((mov==0)))) -> goto accept_S4
+	od;
+}
